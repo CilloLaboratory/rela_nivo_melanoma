@@ -1,0 +1,148 @@
+---
+title: "Cillo et al Rela Nivo - Figure 6"
+output: html_document
+---
+
+## Load packages
+
+```{r}
+# Activate renv
+renv::activate("./r_environment/renv_figs")
+
+## Load packages
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(ggrastr)
+library(survival)
+library(survminer)
+library(survMisc)
+library(ggplotify)
+library(xlsx)
+
+```
+
+
+## Load data and set options 
+
+```{r}
+
+fig6_data <- readRDS("./Data/cillo_et_al_figure_6_data.rds")
+
+## Setup colors for fill
+gene_set_colors <- RColorBrewer::brewer.pal("Set2",n=4)
+names(gene_set_colors) <- c("Immune Score","Nivo signature",
+                            "Rela signature","Rela+Nivo signature")
+
+```
+
+## Create figure
+
+```{r}
+
+## Schema
+p1 <- plot_spacer()
+
+## UMAPs
+p2 <- fig6_data[[1]] %>%
+  select(ImmuneScore,combo,nivo,rela,UMAP_1,UMAP_2) %>%
+  gather(gene_sets,values,-UMAP_1,-UMAP_2) %>%
+  group_by(gene_sets) %>%
+  mutate(scale_val=scale(values)) %>%
+  mutate(scale_val=ifelse(scale_val< -2,-2,scale_val)) %>%
+  mutate(scale_val=ifelse(scale_val>2,2,scale_val)) %>%
+  mutate(`Enrichment\nscore`=scale_val) %>%
+  mutate(gene_sets=recode(gene_sets,
+                          rela="Rela signature",
+                          nivo="Nivo signature",
+                          combo="Rela+Nivo signature",
+                          ImmuneScore="Immune infiltration")) %>%
+  mutate(gene_sets=as.factor(gene_sets)) %>%
+  mutate(gene_sets=factor(gene_sets,levels=c("Immune infiltration",
+                                             "Rela signature",
+                                             "Nivo signature",
+                                             "Rela+Nivo signature"))) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2,colour=`Enrichment\nscore`)) +
+  geom_point() +
+  theme_bw() +
+  theme(legend.position="none") +
+  facet_wrap(~gene_sets,ncol=2) +
+  scale_colour_gradient2(low="purple",mid="black",high="yellow")
+
+p2x <- fig6_data[[1]] %>%
+  select(combo,nivo,rela,ImmuneScore,UMAP_1,UMAP_2) %>%
+  gather(gene_sets,values,-UMAP_1,-UMAP_2) %>%
+  group_by(gene_sets) %>%
+  mutate(scale_val=scale(values)) %>%
+  mutate(scale_val=ifelse(scale_val< -2,-2,scale_val)) %>%
+  mutate(scale_val=ifelse(scale_val>2,2,scale_val)) %>%
+  mutate(`Enrichment\nscore`=scale_val) %>%
+  mutate(gene_sets=recode(gene_sets,
+                          rela_til="Rela signature",
+                          nivo_til="Nivo signature",
+                          combo_til="Rela+Nivo signature",
+                          ImmuneScore="Immune infiltration")) %>%
+  mutate(gene_sets=as.factor(gene_sets)) %>%
+  mutate(gene_sets=factor(gene_sets,levels=c("Immune infiltration",
+                                             "Rela signature",
+                                             "Nivo signature",
+                                             "Rela+Nivo signature"))) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2,colour=`Enrichment\nscore`)) +
+  geom_point() +
+  theme_bw() +
+  theme(legend.position="right") +
+  facet_wrap(~gene_sets,ncol=2) +
+  scale_colour_gradient2(low="purple",mid="black",high="yellow")
+
+legend <- cowplot::get_legend(p2x)
+p2_l <- ggplotify::as.ggplot(legend)
+
+# Survival analysis 
+p4 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~ImmuneScore,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p5 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~rela,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p6 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~nivo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p7 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~combo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+
+## Schema
+p8 <- plot_spacer() 
+
+flow_group_colors <- gene_set_colors
+names(flow_group_colors) <- c("NA","Nivo","Rela","Combo")
+
+p9 <- flow_data %>% 
+  group_by(patient_id) %>%
+  mutate(pid_count=n()) %>%
+  ungroup() %>%
+  filter(pid_count>1) %>%
+  mutate(tx=as.factor(tx)) %>%
+  mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>%
+  mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
+  mutate(time=recode(time,Wk4="Week 4")) %>% 
+  ggplot(.,aes(x=time,y=cd38pos_tim3pos,fill=tx)) +
+  geom_violin() +
+  geom_point() +
+  geom_line(aes(group=patient_id)) +
+  stat_summary(fun="mean",
+               geom="crossbar",
+               width=0.5,
+               colour="black") +
+  facet_wrap(~tx,ncol=3) +
+  theme_bw() +
+  scale_fill_manual(values=flow_group_colors) +
+  theme(legend.position="none") + 
+  xlab("Timepoint") +
+  ylab("CD38+ TIM3+\n(Frequency of CD8+ T cells)")
+
+flow_data %>% 
+  group_by(patient_id) %>%
+  mutate(pid_count=n()) %>%
+  ungroup() %>%
+  filter(pid_count>1) %>%
+  mutate(tx=as.factor(tx)) %>%
+  mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>%
+  mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
+  mutate(time=recode(time,Wk4="Week 4")) %>%
+  split(.$tx) %>%
+  map(~t.test(cd38pos_tim3pos~time,data=.,paired=T))
+
+```

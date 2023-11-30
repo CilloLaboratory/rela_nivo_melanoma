@@ -1,0 +1,384 @@
+---
+title: "Cillo et al Rela Nivo - Figure 3"
+output: html_document
+---
+
+## Load packages
+```{r}
+# Activate renv
+renv::activate("./r_environment/renv_figs")
+
+## Load packages
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(pheatmap)
+library(ggrastr)
+library(lme4)
+library(multcomp)
+select <- dplyr::select
+
+```
+
+
+## Load data and set options 
+
+```{r}
+
+fig3_data <- readRDS("./Data/cillo_et_al_figure_3_data.rds")
+
+## Set default dpi for ggrastr
+options(ggrastr.default.dpi=100)
+
+## Define colors for visualization
+tx_group_colors <- RColorBrewer::brewer.pal("Set2",n=4)
+
+```
+
+## Function to create annotated heatmap 
+
+```{r}
+
+add.flag <- function(pheatmap,
+                     kept.labels,
+                     repel.degree) {
+  
+  # repel.degree = number within [0, 1], which controls how much
+  #                space to allocate for repelling labels.
+  ## repel.degree = 0: spread out labels over existing range of kept labels
+  ## repel.degree = 1: spread out labels over the full y-axis
+  
+  heatmap <- pheatmap$gtable
+  
+  new.label <- heatmap$grobs[[which(heatmap$layout$name == "row_names")]]
+  
+  # keep only labels in kept.labels, replace the rest with ""
+  new.label$label <- ifelse(new.label$label %in% kept.labels,
+                            new.label$label, "")
+  
+  # calculate evenly spaced out y-axis positions
+  repelled.y <- function(d, d.select, k = repel.degree){
+    # d = vector of distances for labels
+    # d.select = vector of T/F for which labels are significant
+    
+    # recursive function to get current label positions
+    # (note the unit is "npc" for all components of each distance)
+    strip.npc <- function(dd){
+      if(!"unit.arithmetic" %in% class(dd)) {
+        return(as.numeric(dd))
+      }
+      
+      d1 <- strip.npc(dd$arg1)
+      d2 <- strip.npc(dd$arg2)
+      fn <- dd$fname
+      return(lazyeval::lazy_eval(paste(d1, fn, d2)))
+    }
+    
+    full.range <- sapply(seq_along(d), function(i) strip.npc(d[i]))
+    selected.range <- sapply(seq_along(d[d.select]), function(i) strip.npc(d[d.select][i]))
+    
+    return(unit(seq(from = max(selected.range) + k*(max(full.range) - max(selected.range)),
+                    to = min(selected.range) - k*(min(selected.range) - min(full.range)),
+                    length.out = sum(d.select)),
+                "npc"))
+  }
+  new.y.positions <- repelled.y(new.label$y,
+                                d.select = new.label$label != "")
+  new.flag <- grid::segmentsGrob(x0 = new.label$x,
+                                 x1 = new.label$x + unit(0.15, "npc"),
+                                 y0 = new.label$y[new.label$label != ""],
+                                 y1 = new.y.positions)
+  
+  # shift position for selected labels
+  new.label$x <- new.label$x + unit(0.2, "npc")
+  new.label$y[new.label$label != ""] <- new.y.positions
+  
+  # add flag to heatmap
+  heatmap <- gtable::gtable_add_grob(x = heatmap,
+                                     grobs = new.flag,
+                                     t = 4,
+                                     l = 4
+  )
+  
+  # replace label positions in heatmap
+  heatmap$grobs[[which(heatmap$layout$name == "row_names")]] <- new.label
+  
+  # plot result
+  grid::grid.newpage()
+  grid::grid.draw(heatmap)
+  
+  # return a copy of the heatmap invisibly
+  invisible(heatmap)
+}
+
+```
+
+## Create figure
+
+```{r}
+
+## RNA velocity plot 
+p1 <- plot_spacer()
+
+## Plot RNA velocity pseudotime
+p2 <- fig3_data[[1]] %>% 
+  mutate(`Velocity pseudotime`=velocity_pseudotime) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  rasterize(geom_point(colour="black",size=1.2)) +
+  rasterize(geom_point(aes(colour=`Velocity pseudotime`),size=1)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="bottom") +
+  xlab("UMAP_1") +
+  ylab("UMAP_2")
+
+p2x <- fig3_data[[1]] %>% 
+  mutate(`Velocity pseudotime`=velocity_pseudotime) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  rasterize(geom_point(colour="black",size=1.2)) +
+  rasterize(geom_point(aes(colour=`Velocity pseudotime`),size=1)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="right") +
+  xlab("UMAP_1") +
+  ylab("UMAP_2") +
+  theme(legend.position = "bottom")
+
+legend <- cowplot::get_legend(p2x)
+p2_l <- ggplotify::as.ggplot(legend)
+
+## Pseudotime over clusters
+p3 <- fig3_data[[1]] %>%
+  mutate(final_clusters=as.factor(final_clusters)) %>% 
+  group_by(final_clusters) %>% 
+  mutate(`Mean cluster\npseudotime`=mean(velocity_pseudotime)) %>%
+  ungroup() %>% 
+  ggplot(.,aes(x=reorder(final_clusters,`Mean cluster\npseudotime`),y=velocity_pseudotime,
+               fill=`Mean cluster\npseudotime`)) +
+  geom_violin() +
+  geom_boxplot(outlier.shape=NA,width=0.2,colour="white") +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  xlab("Clusters") +
+  ylab("Velocity pseudotime")
+
+## Create annotated data for heatmap 
+stored_rownames <- rownames(fig3_data[[2]])
+fig3_data[[2]] <- apply(fig3_data[[2]],2,scale)
+fig3_data[[2]][fig3_data[[2]]>3] <- 3
+fig3_data[[2]][fig3_data[[2]]< -3] <- -3
+rownames(fig3_data[[2]]) <- stored_rownames
+
+# Kernel smoothing
+velo_time <- fig3_data[[1]] %>%                                                         
+  arrange(velocity_pseudotime) %>%                                                                    
+  pull(velocity_pseudotime)
+
+kern_smooth <- apply(fig3_data[[2]],2,function(x) {                                           
+  KernSmooth::locpoly(velo_time,x,kernel="normal",bandwidth=0.2)$y                                 
+  })                                                                                                 
+                                                                                                
+kern_time <- apply(fig3_data[[2]],2,function(x) {                                             
+  KernSmooth::locpoly(velo_time,x,kernel="normal",bandwidth=0.2)$x                                 
+  })                                                                                                 
+                                                                                                    
+annot_col <- data.frame(pseudotime=kern_time[,1]) 
+annot_col$pseudo_bin <- as.numeric(cut_number(kern_time[,1],n=10))
+                                                                                                    
+rownames(kern_smooth) <- rownames(annot_col) <-  paste0("cell_",seq(1,nrow(kern_time),1))          
+
+# Create smoothed heatmap
+out <- pheatmap::pheatmap(t(kern_smooth),
+                          scale="none",
+                          cluster_row=T,
+                          cluster_col=F,                              
+                          annotation_col=annot_col,                                                                        
+                          show_rownames=T,                                                                                 
+                          show_colnames=F,
+                          color=colorRampPalette(colors=c("purple","black","yellow"))(1000)
+                          )
+
+# Create clusters
+annot_row <- data.frame(gene_clust=as.factor(cutree(out$tree_row,k=10)))
+cluster_res <- cutree(out$tree_row,k=10) 
+rownames(annot_row) <- names(cluster_res)
+
+out2 <- pheatmap::pheatmap(t(kern_smooth),
+                          cluster_row=T,
+                          cluster_col=F,
+                          annotation_col=annot_col,
+                          annotation_row=annot_row,
+                          show_rownames=T,                                                                        
+                          show_colnames=F,
+                          color=colorRampPalette(colors=c("purple","black","yellow"))(1000),
+                          legend = T
+)
+
+genes_clustered_list <- enframe(cutree(out$tree_row,k=10),name="gene",value="cluster") %>%
+  split(.$cluster) %>%
+  lapply(.,function(x) x %>% pull(gene))
+
+p4 <- add.flag(out2,kept.labels=c("LAG3","PDCD1","HAVCR2",
+                                  "KLF2","DUSP1",
+                                  "FOS","JUN","CD69","JUNB",
+                                  "IL7R","TCF7","SELL",
+                                  "CD27","CXCR3","STAT1","ENTPD1",
+                                  "GZMB","GZMB","PRF1",
+                                  "IFITM1"
+                                  ),
+         repel.degree=0.1)
+
+## Modules across pseudotime bins 
+# Omnibus test - modules 1 and 8
+overall_test <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
+  gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
+  filter(gene_sets %in% c("Module_1","Module_8")) %>% 
+  filter(pseudo_bin>7) %>%
+  split(.$gene_sets) %>%
+  map(~afex::mixed(values~time_tx+(1|patient_id)-1,data=.))
+
+# Pairwise tests
+pairwise_res <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
+  gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
+  filter(gene_sets %in% c("Module_1","Module_8")) %>% 
+  filter(pseudo_bin>7) %>%
+  split(.$gene_sets) %>%
+  lapply(.,function(x) {
+    lmer_mod <- lmer(values~time_tx+(1|patient_id),data=x)
+    glht(lmer_mod, linfct = mcp(time_tx = 'Tukey')) %>% 
+      summary(.,test=adjusted("fdr"))
+  })
+
+# Confidence intervals 
+conf_ints <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
+  gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
+  filter(gene_sets %in% c("Module_1","Module_8")) %>% 
+  filter(pseudo_bin>7) %>%
+  split(.$gene_sets) %>%
+  lapply(.,function(x) {
+    mod_res <- lmer(values~time_tx+(1|patient_id)-1,data=x)
+    mod_conf <- confint(lmer(values~time_tx+(1|patient_id)-1,data=x))
+    
+    conf_ints_comb <- left_join(fixef(mod_res) %>%
+                                  enframe(.,name="group",value="fixed_eff"),
+                                mod_conf %>%
+                                  as_tibble(.,rownames="group"),by="group")
+    return(conf_ints_comb)
+    
+  })
+
+# Plots 
+p5 <- conf_ints[[1]] %>%
+  mutate(tx=as.factor(recode(group,
+                             time_txBaseline="Baseline",
+                             time_txcombo="Rela+Nivo",
+                             time_txnivo="Nivo",
+                             time_txrela="Rela"))) %>%
+  mutate(tx=factor(tx,levels=c("Baseline",
+                               "Rela",
+                               "Nivo",
+                               "Rela+Nivo"))) %>%
+  ggplot(.,aes(x=tx,y=fixed_eff,ymin=`2.5 %`,ymax=`97.5 %`,
+               fill=tx)) +
+  geom_crossbar() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Treatment Group") +
+  ylab("Terminal exhaustion module") +
+  scale_fill_manual(values=tx_group_colors)
+
+p6 <- conf_ints[[2]] %>%
+  mutate(tx=as.factor(recode(group,
+                             time_txBaseline="Baseline",
+                             time_txcombo="Rela+Nivo",
+                             time_txnivo="Nivo",
+                             time_txrela="Rela"))) %>%
+  mutate(tx=factor(tx,levels=c("Baseline",
+                               "Rela",
+                               "Nivo",
+                               "Rela+Nivo"))) %>%
+  ggplot(.,aes(x=tx,y=fixed_eff,ymin=`2.5 %`,ymax=`97.5 %`,
+               fill=tx)) +
+  geom_crossbar() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Treatment Group") +
+  ylab("Cytotoxic module") +
+  scale_fill_manual(values=tx_group_colors)
+
+## Co-expression of gene modules across groups
+## Pipeline to evaluate gene sets, cutoffs and frequencies across groups
+gene_set1 <- "Module_1"
+gene_set2 <- "Module_8"
+
+## Cutoffs by quantiles 
+cut_offs <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  filter(pseudo_bin>7) %>%
+  select(grep("Module_",colnames(fig3_data[[1]]),value=T)) %>%
+  gather(cluster,value) %>%
+  split(.$cluster) %>%
+  sapply(.,function(x) quantile(x$value,probs=seq(0,1,0.05)))
+
+# 75th percentile
+cut_res <- cut_offs[15,c(gene_set1,gene_set2)]
+
+## Plot with cutoffs 
+p7 <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  filter(pseudo_bin>7) %>%
+  mutate(time_tx=as.factor(time_tx)) %>%
+  mutate(time_tx=factor(time_tx,levels=c("Baseline","rela","nivo","combo"))) %>% 
+  mutate(time_tx=recode(time_tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
+  ggplot(.,aes(x=!! sym(gene_set1),y=!! sym(gene_set2))) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "density") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  geom_vline(xintercept=cut_res[1],colour="black") +
+  geom_hline(yintercept=cut_res[2],colour="black") +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=12,hjust=0)) +
+  xlab("Exhaustion module") +
+  ylab("Cytotoxic module")
+
+fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  filter(pseudo_bin>7) %>%
+  mutate(mod1_pos=ifelse(!! sym(gene_set1)>cut_res[1],1,0)) %>%
+  mutate(mod8_pos=ifelse(!! sym(gene_set2)>cut_res[2],1,0)) %>%
+  select(mod1_pos,mod8_pos,time_tx) %>%
+  split(.$time_tx) %>%
+  lapply(.,function(x) {
+    x %>%
+      select(-time_tx) %>%
+      table(.) %>%
+      proportions(.)
+  })
+
+```

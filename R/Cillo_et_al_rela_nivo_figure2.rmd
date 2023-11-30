@@ -1,0 +1,324 @@
+---
+title: "Cillo et al Rela Nivo - Figure 2"
+output: html_document
+---
+
+## Load packages
+
+```{r}
+## Activate renv
+renv::activate("./r_environment/renv_figs")
+
+## Load packages
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(ggplotify)
+library(ggrastr)
+library(ggridges)
+library(pheatmap)
+library(lme4)
+library(multcomp)
+select <- dplyr::select
+
+```
+
+## Load data and set options 
+
+```{r}
+
+fig2_data <- readRDS("./Data/cillo_et_al_figure_2_data.rds")
+
+## Set default dpi for ggrastr
+options(ggrastr.default.dpi=100)
+
+## Define colors for visualization
+colors_use <- colorRampPalette(RColorBrewer::brewer.pal("Set1",n=8))(length(unique(fig2_data[[1]]$final_clusters)))
+tx_group_colors <- RColorBrewer::brewer.pal("Set2",n=4)
+
+```
+
+## Create Figure
+
+```{r}
+
+## CD8+ T cell clusters - PBMC and TIL
+p1 <- fig2_data[[1]] %>%
+  mutate(Clusters=as.factor(final_clusters)) %>%
+  filter(sample_type=="PBMC") %>%
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=Clusters)) +
+  rasterize(geom_point(colour="black",size=1.2)) +
+  rasterize(geom_point(size=1,alpha=0.3)) +
+  scale_colour_manual(values=colors_use) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  guides(colour = guide_legend(title="Clusters",override.aes = list(size=3,alpha=1))) +
+  ggtitle("CD8+ T cells - PBMC") +
+  xlab("UMAP_1") +
+  ylab("UMAP_2")
+
+p2 <- fig2_data[[1]] %>%
+  mutate(Clusters=as.factor(final_clusters)) %>%
+  filter(sample_type=="TIL") %>%
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=Clusters)) +
+  rasterize(geom_point(colour="black",size=1.2)) +
+  rasterize(geom_point(size=1,alpha=0.5)) +
+  scale_colour_manual(values=colors_use) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  guides(colour = guide_legend(title="Clusters",override.aes = list(size=3,alpha=1))) +
+  ggtitle("CD8+ T cells - TIL") +
+  xlab("UMAP_1") +
+  ylab("UMAP_2")
+
+p2x <- fig2_data[[1]] %>%
+  mutate(Clusters=as.factor(final_clusters)) %>%
+  mutate(Clusters=factor(Clusters,levels=1:9)) %>%
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=Clusters)) +
+  geom_point(colour="black",size=1.2) +
+  geom_point(size=1,alpha=0.5) +
+  scale_colour_manual(values=colors_use) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank()) +
+  guides(colour = guide_legend(title="Clusters",override.aes = list(size=3,alpha=1)))
+
+legend <- cowplot::get_legend(p2x)
+p2_l <- ggplotify::as.ggplot(legend)
+
+## CD8+ T cells density - PBMC and TIL
+p3 <- fig2_data[[1]] %>% 
+  ggplot(aes(UMAP_1, UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T) +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size=12,hjust=0),
+        legend.position="none") +
+  facet_wrap(~sample_type)
+
+p3x <- fig2_data[[1]] %>% 
+  ggplot(aes(UMAP_1, UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T) +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_classic() +
+  facet_wrap(~sample_type)
+
+legend <- cowplot::get_legend(p3x)
+p3_l <- ggplotify::as.ggplot(legend)
+
+## Heatmap of gene set enrichment results
+res_stats <- fig2_data[[1]] %>%
+  select(final_clusters,
+         HALLMARK_INTERFERON_ALPHA_RESPONSE,
+         HALLMARK_INTERFERON_GAMMA_RESPONSE,
+         REACTOME_COSTIMULATION_BY_THE_CD28_FAMILY,
+         REACTOME_PD_1_SIGNALING,
+         REACTOME_TCR_SIGNALING,
+         BELTRA_texprog1,
+         BELTRA_texprog2,
+         BELTRA_texint,
+         BELTRA_texterm,
+         KUMAR_lung_cd8_up,
+         KUMAR_spleen_cd8_up,
+         novershtern_naive_cd8,
+         novershtern_central_mem_cd8,
+         novershtern_eff_mem_cd8,
+         novershtern_eff_cd8,
+         KEGG_CELL_CYCLE
+  ) %>%
+  gather(gene_sets,values,-final_clusters) %>%
+  group_by(gene_sets,final_clusters) %>%
+  summarize(mean_val=mean(values)) %>%
+  spread(gene_sets,mean_val) %>%
+  select(-final_clusters) %>%
+  scale() %>% 
+  as.matrix() %>%
+  t()
+
+res_stats[res_stats>2] <- 2
+res_stats[res_stats< -2] <- -2
+
+colnames(res_stats) <- paste("Cluster ",1:9,sep="")
+
+rownames(res_stats) <- c("Tex intermediate",
+                         "Tex progenitor 1",
+                         "Tex progenitor 2",
+                         "Tex terminal",
+                         "IFN-alpha response",
+                         "IFN-gamma response",
+                         "Cell cycle",
+                         "CD8+ lung residence",
+                         "CD8+ spleen residence",
+                         "Central memory CD8+",
+                         "Effector CD8+",
+                         "Effector memory CD8+",
+                         "Naive CD8+",
+                         "CD28 costimulation",
+                         "PD1 signaling",
+                         "TCR signaling"
+)
+
+p4 <- ggplotify::as.ggplot(pheatmap(res_stats,
+                                    scale="none",
+                                    color=colorRampPalette(colors=c("purple","black","yellow"))(100)))
+
+## Analysis of genes sets by treatment groups 
+fig2_data[[1]] <- fig2_data[[1]] %>%
+  mutate(`Treatment group`=recode(time_tx,
+                                  combo="Rela+Nivo",
+                                  nivo="Nivo",
+                                  rela="Rela")) %>%
+  mutate(`Treatment group`=as.factor(`Treatment group`)) %>% 
+  mutate(`Treatment group`=factor(`Treatment group`,levels=c("Baseline",
+                                                             "Rela",
+                                                             "Nivo",
+                                                             "Rela+Nivo")))
+
+gene_sets_significance <- fig2_data[[1]] %>%
+  select(patient_id,time_tx,sample_type,
+         REACTOME_TCR_SIGNALING,
+         HALLMARK_INTERFERON_GAMMA_RESPONSE,
+         BELTRA_texint,
+         BELTRA_texterm
+         ) %>%
+  gather(gene_sets,values,-patient_id,-time_tx,-sample_type) %>%
+  split(.$sample_type) %>%
+  lapply(.,function(x) {
+    x %>%
+      split(.$gene_sets) %>%
+      map(~afex::mixed(values~time_tx+(1|patient_id)-1,data=.))
+  })
+
+pairwise_tx <- fig2_data[[1]] %>%
+  select(patient_id,time_tx,sample_type,
+         REACTOME_TCR_SIGNALING,
+         HALLMARK_INTERFERON_GAMMA_RESPONSE,
+         BELTRA_texint,
+         BELTRA_texterm
+  ) %>%
+  gather(gene_sets,values,-patient_id,-time_tx,-sample_type) %>%
+  split(.$sample_type)
+
+pairwise_res <- pairwise_tx %>%
+  lapply(.,function(x) {
+    x %>%
+    split(.$gene_sets) %>%
+    lapply(.,function(y) {
+      glht(lmer(values~time_tx+(1|patient_id)-1,data=y),
+             linfct=mcp(time_tx = 'Tukey')) %>%
+        summary(.,test=adjusted('fdr'))
+})
+})
+
+conf_int_res <- pairwise_tx %>%
+  lapply(.,function(x) {
+    x %>%
+      split(.$gene_sets) %>%
+      lapply(.,function(y) {
+        mod_res <- lmer(values~time_tx+(1|patient_id)-1,data=y)
+        mod_conf <- confint(lmer(values~time_tx+(1|patient_id)-1,data=y))
+        
+        conf_ints_comb <- left_join(fixef(mod_res) %>%
+                                      enframe(.,name="group",value="fixed_eff"),
+                                    mod_conf %>%
+                                      as_tibble(.,rownames="group"),by="group")
+        return(conf_ints_comb)
+        
+      })
+  })
+
+set1 <- data.frame(do.call(rbind,conf_int_res[[1]])) %>%
+  as_tibble(.,rownames="gene_set") %>%
+  mutate(gene_set=gsub("\\.[0-9]","",gene_set)) %>%
+  mutate(group=as.factor(gsub("time_tx","",group))) %>%
+  mutate(group=recode(group,combo="Rela+nivo",nivo="Nivo",rela="Rela")) %>%
+  mutate(group=factor(group,levels=c("Baseline","Rela","Nivo","Rela+nivo")))
+
+set2 <- data.frame(do.call(rbind,conf_int_res[[2]])) %>%
+  as_tibble(.,rownames="gene_set") %>%
+  mutate(gene_set=gsub("\\.[0-9]","",gene_set)) %>%
+  mutate(group=as.factor(gsub("time_tx","",group))) %>%
+  mutate(group=recode(group,combo="Rela+nivo",nivo="Nivo",rela="Rela")) %>%
+  mutate(group=factor(group,levels=c("Baseline","Rela","Nivo","Rela+nivo")))
+
+colnames(set1) <- colnames(set2) <- c("gene_set","Group","fixed_eff","lower_bound","upper_bound")
+
+p5 <- set1 %>%
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=Group)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(legend.position="none") +
+  scale_fill_manual(values=tx_group_colors) +
+  facet_wrap(~gene_set,scale="free")
+
+p6 <- set2 %>%
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=Group)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(legend.position="none") +
+  facet_wrap(~gene_set,scale="free")
+
+## TCR signaling
+p7 <- plot_spacer() 
+
+condition_list <- fig2_data[[2]] %>%
+  split(.$condition)
+
+cond_res <- data.frame(patient_id=condition_list[[1]]$patient_id,
+                       timepoint=condition_list[[2]]$timepoint,
+                       tx=condition_list[[2]]$tx,
+                       pSLP76=condition_list[[1]]$pSLP76_MFI/condition_list[[2]]$pSLP76_MFI
+)
+
+p8 <- cond_res %>%
+  gather(marker,value,-patient_id,-timepoint,-tx) %>%
+  mutate(tx=as.factor(tx)) %>%
+  mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>% 
+  mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Rela+nivo")) %>% 
+  mutate(timepoint=recode(timepoint,Week4="Week 4")) %>% 
+  filter(marker=="pSLP76") %>%
+  ggplot(.) +
+  geom_boxplot(aes(x=timepoint,y=value,fill=tx)) +
+  geom_point(aes(x=timepoint,y=value)) +
+  geom_line(aes(x=timepoint,y=value,group=patient_id)) +
+  facet_wrap(~tx,ncol=1,scale="free") +
+  theme_bw() +
+  theme(legend.position="none") +
+  scale_fill_manual(values=tx_group_colors) +
+  xlab("Timepoint") +
+  ylab("pSLP76 MFI\n(ratio of unstim to 15 mins)")
+
+cond_res %>%
+  gather(marker,value,-patient_id,-timepoint,-tx) %>%
+  mutate(tx=as.factor(tx)) %>%
+  mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>% 
+  mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
+  filter(marker=="pSLP76") %>% 
+  split(.$tx) %>%
+  map(~t.test(value~timepoint,data=.,paired=T))
+
+```
+

@@ -1,0 +1,253 @@
+---
+title: "Cillo et al Rela Nivo - Figure 1"
+output: html_document
+---
+
+## Load packages
+
+```{r}
+## Activate renv
+renv::activate("./r_environment/renv_figs")
+
+## Load packages
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(ggplotify)
+library(ggrastr)
+
+```
+
+## Load data and set options 
+
+```{r}
+
+fig1_data <- readRDS("./data/cillo_et_al_figure_1_data.rds")
+
+## Set default dpi for ggrastr
+options(ggrastr.default.dpi=100)
+
+## Define colors for visualization
+colors.use <- colorRampPalette(RColorBrewer::brewer.pal("Set2",n=8))(length(unique(fig1_data$scvi_cell_types_refined)))
+names(colors.use) <- levels(umap_meta$scvi_cell_types_refined)
+
+```
+
+## Create figure
+
+```{r}
+
+## Place saver for study design 
+p1 <- plot_spacer()
+
+## Overall PBMC - cell types
+p2 <- fig1_data %>%
+  filter(sample_type=="PBMC") %>%
+  filter(!grepl("macrophage",scvi_cell_types_refined)) %>% 
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=scvi_cell_types_refined)) +
+  rasterize(geom_point(colour="black",size=0.7)) +
+  rasterize(geom_point(size=0.5,alpha=1/10)) +
+  scale_colour_manual(values=colors.use) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  ggtitle("PBMC")
+
+
+## Overall TIL - cell types 
+p3 <- umap_meta %>%
+  filter(sample_type=="TIL") %>%
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=scvi_cell_types_refined)) +
+  rasterize(geom_point(colour="black",size=0.7)) +
+  rasterize(geom_point(size=0.5,alpha=1/10)) +
+  scale_colour_manual(values=colors.use) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  ggtitle("TIL")
+
+## Unified cell type legend 
+p3x <- fig1_data %>%
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=scvi_cell_types_refined)) +
+  rasterize(geom_point(colour="black",size=0.7)) +
+  rasterize(geom_point(size=0.5,alpha=1/10)) +
+  scale_colour_manual(values=colors.use) +
+  theme_bw() +
+  guides(colour = guide_legend(title="Cell types",override.aes = list(size=3,alpha=1)))
+
+legend <- cowplot::get_legend(p3x)
+p3_l <- ggplotify::as.ggplot(legend)
+
+## Inhibitory receptor expression - PDCD1
+p4 <- fig1_data %>%
+  filter(sample_type=="PBMC") %>% 
+  filter(!grepl("macrophage",scvi_cell_types_refined)) %>% 
+  ggplot(.,aes(x=UMAP_1, y=UMAP_2,colour=log1p(PDCD1)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  ggtitle("PBMC - PDCD1") +
+  scale_color_continuous(limits=c(0,3))
+
+p5 <- fig1_data %>%
+  filter(sample_type=="TIL") %>% 
+  ggplot(.,aes(x=UMAP_1, y=UMAP_2,colour=log1p(PDCD1)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  ggtitle("TIL - PDCD1") +
+  scale_color_continuous(limits=c(0,3))
+
+p5x <- fig1_data %>%
+  filter(sample_type=="TIL") %>% 
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=log1p(PDCD1)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank()) +
+  scale_color_continuous(limits=c(0,3))
+
+legend <- cowplot::get_legend(p5x)
+p5_l <- ggplotify::as.ggplot(legend)
+
+## Inhibitory receptor expression - LAG3
+p6 <- fig1_data %>%
+  filter(sample_type=="PBMC") %>% 
+  filter(!grepl("macrophage",scvi_cell_types_refined)) %>% 
+  ggplot(.,aes(x=UMAP_1, y=UMAP_2,colour=log1p(LAG3)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none") +
+  ggtitle("PBMC - LAG3") +
+  scale_color_continuous(limits=c(0,5))
+
+p7 <- fig1_data %>%
+  filter(sample_type=="TIL") %>% 
+  ggplot(.,aes(x=UMAP_1, y=UMAP_2,colour=log1p(LAG3)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="none"
+  ) +
+  ggtitle("TIL - LAG3") +
+  scale_color_continuous(limits=c(0,5))
+
+p7x <- fig1_data %>%
+  filter(sample_type=="TIL") %>% 
+  ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=log1p(LAG3)),size=0.5) +
+  rasterize(geom_point()) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank()) +
+  scale_color_continuous(limits=c(0,5))
+
+legend <- cowplot::get_legend(p7x)
+p7_l <- ggplotify::as.ggplot(legend)
+
+## Dot plots of IR expression in PBMC and TIL 
+genes_use <- c("PDCD1","LAG3","CTLA4","HAVCR2","TIGIT")
+
+freq_pos <- fig1_data %>%
+  filter(timepoint=="Baseline") %>%
+  select(scvi_cell_types_refined,all_of(genes_use),sample_type) %>%
+  gather(genes,values,-scvi_cell_types_refined,-sample_type) %>%
+  group_by(scvi_cell_types_refined,sample_type) %>%
+  mutate(n_cells=n()) %>%
+  ungroup() %>%
+  group_by(genes,scvi_cell_types_refined,sample_type) %>%
+  mutate(freq_pos=sum(values>0)/n_cells) %>%
+  ungroup() %>%
+  select(scvi_cell_types_refined,genes,freq_pos,sample_type) %>%
+  distinct()
+
+scaled_dat <- fig1_data %>%
+  filter(timepoint=="Baseline") %>%
+  select(scvi_cell_types_refined,all_of(genes_use),sample_type) %>%
+  gather(genes,values,-scvi_cell_types_refined,-sample_type) %>%
+  group_by(genes) %>%
+  mutate(scale_exp=scale(values)) %>%
+  group_by(scvi_cell_types_refined,genes,sample_type) %>%
+  summarize(mean_scale_exp=mean(scale_exp[,1])) %>%
+  ungroup() 
+
+dot_dat <- left_join(freq_pos,scaled_dat,by=c("scvi_cell_types_refined",
+                                              "genes","sample_type"))
+
+p8 <- dot_dat %>% 
+  filter(sample_type=="PBMC") %>%
+  filter(!grepl("macrophage",scvi_cell_types_refined)) %>% 
+  mutate(mean_scale_exp=ifelse(mean_scale_exp>1,1,mean_scale_exp)) %>%
+  mutate(mean_scale_exp=ifelse(mean_scale_exp< -1,-1,mean_scale_exp)) %>%
+  ggplot(.,aes(x=scvi_cell_types_refined,y=genes,size=freq_pos,colour=mean_scale_exp)) +
+  geom_point() +
+  scale_colour_gradient2(limits=c(-1,1),low="purple",mid="black",high="yellow") +
+  scale_size_continuous(range=c(1,10)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45,hjust=T),
+        axis.title.x = element_blank(),
+        legend.position="none") +
+  ggtitle("PBMC")
+
+
+p9 <- dot_dat %>%
+  filter(sample_type=="TIL") %>%
+  mutate(mean_scale_exp=ifelse(mean_scale_exp>1,1,mean_scale_exp)) %>%
+  mutate(mean_scale_exp=ifelse(mean_scale_exp< -1,-1,mean_scale_exp)) %>%
+  ggplot(.,aes(x=scvi_cell_types_refined,y=genes,size=freq_pos,colour=mean_scale_exp)) +
+    geom_point() +
+  scale_colour_gradient2(limits=c(-1,1),low="purple",mid="black",high="yellow") +
+  scale_size(range=c(1,10)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle=45,hjust=T),
+          axis.title.x = element_blank(),
+          legend.position="none") +
+    ggtitle("TIL")
+
+p9x <- dot_dat %>% 
+  mutate(mean_scale_exp=ifelse(mean_scale_exp>1,1,mean_scale_exp)) %>%
+  mutate(mean_scale_exp=ifelse(mean_scale_exp< -1,-1,mean_scale_exp)) %>%
+  ggplot(.,aes(x=scvi_cell_types_refined,y=genes,size=freq_pos,colour=mean_scale_exp)) +
+  geom_point() +
+  scale_colour_gradient2(limits=c(-1,1),low="purple",mid="black",high="yellow") +
+  scale_size(range=c(1,10)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45,hjust=T),
+        axis.title.x = element_blank())
+
+legend <- cowplot::get_legend(p9x)
+p9_l <- as.ggplot(legend)
+
+```

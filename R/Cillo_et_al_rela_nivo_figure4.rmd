@@ -1,0 +1,557 @@
+---
+title: "Cillo et al Rela Nivo - Figure 4"
+output: html_document
+---
+
+## Load packages
+```{r}
+# Activate renv
+renv::activate("./r_environment/renv_figs")
+
+## Load packages
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(ggplotify)
+library(ggrastr)
+library(pheatmap)
+library(UpSetR)
+library(lme4)
+library(multcomp)
+select <- dplyr::select
+
+```
+
+
+## Load data and set options 
+
+```{r}
+
+fig4_data <- readRDS("./Data/cillo_et_al_figure_4_data.rds")
+
+## Define colors for visualization
+colors.use <- colorRampPalette(RColorBrewer::brewer.pal("Set1",n=8))(length(unique(fig4_data$final_clusters)))
+names(colors.use) <- unique(fig4_data$final_clusters)
+colors.use <- colors.use[order(names(colors.use),decreasing=F)]
+
+tx_group_colors <- RColorBrewer::brewer.pal("Set2",n=4)
+names(tx_group_colors) <- c("Baseline","Nivo","Rela","Rela+Nivo")
+
+```
+
+## Create figure
+
+```{r}
+
+## Plot TCR distributions
+p1 <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  ungroup() %>%
+  filter(tcr_counts>3) %>% 
+  select(tcr_counts,final_clusters,UMAP_1,UMAP_2,tcrb_cdr3,time_tx) %>%
+  distinct() %>%
+  mutate(`TCR quantile`=cut(tcr_counts,breaks=quantile(tcr_counts, probs=seq(0,1, by=0.25),na.rm=TRUE),include.lowest=TRUE)) %>%
+  mutate(Cluster=as.factor(final_clusters)) %>%
+  ggplot(.,aes(x=reorder(tcrb_cdr3,tcr_counts),y=log(tcr_counts),colour=`TCR quantile`)) +
+  geom_point() +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position="none") +
+  xlab("TCRb CDR3") +
+  ylab("Log TCRb CDR3 counts")
+
+p1x <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  ungroup() %>%
+  filter(tcr_counts>3) %>% 
+  select(tcr_counts,final_clusters,UMAP_1,UMAP_2,tcrb_cdr3,time_tx) %>%
+  distinct() %>%
+  mutate(`TCR quantile`=cut(tcr_counts,breaks=quantile(tcr_counts, probs=seq(0,1, by=0.25),na.rm=TRUE),include.lowest=TRUE)) %>%
+  mutate(Cluster=as.factor(final_clusters)) %>%
+  ggplot(.,aes(x=reorder(tcrb_cdr3,tcr_counts),y=log(tcr_counts),colour=`TCR quantile`)) +
+  geom_point() +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  xlab("TCRb CDR3") +
+  ylab("Log TCRb CDR3 counts")
+
+legend <- cowplot::get_legend(p1x)
+p1_l <- as.ggplot(legend)
+
+## TCR quantiles across clusters
+fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  ungroup() %>%
+  filter(tcr_counts>3) %>% 
+  select(tcr_counts,final_clusters,UMAP_1,UMAP_2,tcrb_cdr3,time_tx) %>%
+  distinct() %>%
+  mutate(`TCR quantile`=cut(tcr_counts,breaks=quantile(tcr_counts, probs=seq(0,1, by=0.25),na.rm=TRUE),include.lowest=TRUE)) %>%
+  select(`TCR quantile`) %>%
+  distinct()
+
+quantile_labs <- c("TCR quantile (4-8)",
+                   "TCR quantile (9-21)",
+                   "TCR quantile (22-62)",
+                   "TCR quantile (62-418)"
+                   )
+names(quantile_labs) <- c("[4,8]","(8,21]","(21,61.8]","(61.8,418]") 
+
+p2 <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  filter(tcr_counts>3) %>%
+  ungroup() %>%
+  select(tcr_counts,final_clusters,UMAP_1,UMAP_2) %>%
+  distinct() %>%
+  mutate(tcr_quantile=cut(tcr_counts,breaks=quantile(tcr_counts, probs=seq(0,1, by=0.25),na.rm=TRUE),include.lowest=TRUE)) %>%
+  mutate(Cluster=as.factor(final_clusters)) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        strip.background = element_blank(),
+        legend.position="none") +
+  facet_wrap(~tcr_quantile,
+             labeller = labeller(tcr_quantile=quantile_labs))
+
+p2x <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  filter(tcr_counts>3) %>%
+  ungroup() %>%
+  select(tcr_counts,final_clusters,UMAP_1,UMAP_2) %>%
+  distinct() %>%
+  mutate(tcr_quantile=cut(tcr_counts,breaks=quantile(tcr_counts, probs=seq(0,1, by=0.25),na.rm=TRUE),include.lowest=TRUE)) %>%
+  mutate(Cluster=as.factor(final_clusters)) %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        strip.background = element_blank()) +
+  facet_wrap(~tcr_quantile,
+             labeller = labeller(tcr_quantile=quantile_labs))
+
+legend <- cowplot::get_legend(p2x)
+p2_l <- as.ggplot(legend)
+
+## Upset plot for shared TCRs across clusters
+tcr_overlap <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  filter(tcr_counts>3) %>%
+  select(tcrb_cdr3,final_clusters,tcr_counts) %>%
+  split(.$final_clusters) %>%
+  lapply(.,function(x) x %>% pull(tcrb_cdr3))
+
+## Shared TCRs pre- and post-treatment
+tcr_counts_list <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  group_by(tcrb_cdr3) %>%
+  mutate(tcr_counts=n()) %>%
+  ungroup() %>%
+  filter(tcr_counts>3) %>%
+  group_split(time_tx,sample_type) %>%
+  lapply(.,function(x) {
+    x %>%
+      select(tcrb_cdr3,sample_type,time_tx) %>%
+      group_by(tcrb_cdr3) %>%
+      mutate(tcr_counts_tissue=n()) %>%
+      distinct()
+  })
+
+sapply(tcr_counts_list,function(x) x[1,c("sample_type","time_tx")])
+sapply(tcr_counts_list,function(x) dim(x))
+
+# Function to assess overlap and differences
+tcr_overlap <- function(input_tcrs1,input_tcrs2,measurement_type="intersect") {
+  
+  if (measurement_type=="intersect") {
+    
+    length(intersect(input_tcrs1,input_tcrs2))/length(input_tcrs2)
+    
+  } else if (measurement_type=="setdiff") {
+    
+    length(setdiff(input_tcrs1,input_tcrs2))/length(input_tcrs1)
+    
+  } else {
+    
+    print("Measurement_type not supported")
+    
+  }
+  
+}
+
+# Only present post treatment in either PBMC or TIL
+tcrs_post_only <- setdiff(do.call(c,lapply(tcr_counts_list[c(3,4,5,6,7,8)],function(x) x$tcrb_cdr3)),
+                          do.call(c,lapply(tcr_counts_list[c(1,2)],function(x) x$tcrb_cdr3))
+)
+
+# Present both pre and post treatment in TIL
+tcrs_both <- intersect(do.call(c,lapply(tcr_counts_list[c(3,4,5,6,7,8)],function(x) x$tcrb_cdr3)),
+                       do.call(c,lapply(tcr_counts_list[c(1,2)],function(x) x$tcrb_cdr3))
+)
+
+
+## Only present post treatment in TIL
+tcrs_post_til_only <- setdiff(do.call(c,lapply(tcr_counts_list[c(4,6,8)],function(x) x$tcrb_cdr3)),
+                              do.call(c,lapply(tcr_counts_list[c(1,2)],function(x) x$tcrb_cdr3))
+)
+
+
+## Plot Shared and Emergent TCRs
+# Extract range
+plot_ranges <- fig4_data %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+p3 <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(!time_tx %in% "Baseline") %>%
+  filter(tcrb_cdr3 %in% tcrs_both) %>%
+  mutate(treatment=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(treatment=as.factor(treatment)) %>% 
+  mutate(treatment=factor(treatment,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        strip.background = element_blank(),
+        legend.position="none") +
+  facet_wrap(~treatment) +
+  ggtitle("Shared TCRs pre- and post-treatment") +
+  xlim(layer_scales(plot_ranges)$x$range$range) +
+  ylim(layer_scales(plot_ranges)$y$range$range) 
+
+## Unique TCRs pre- and post-treatment
+p4 <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(!time_tx %in% "Baseline") %>%
+  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  mutate(treatment=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(treatment=as.factor(treatment)) %>% 
+  mutate(treatment=factor(treatment,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        strip.background = element_blank(),
+        legend.position="none") +
+  facet_wrap(~treatment) +
+  ggtitle("Emergent TCRs post-treatment") +
+  xlim(layer_scales(plot_ranges)$x$range$range) +
+  ylim(layer_scales(plot_ranges)$y$range$range) 
+
+p4x <- fig4_data %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(!time_tx %in% "Baseline") %>%
+  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  mutate(treatment=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(treatment=as.factor(treatment)) %>% 
+  mutate(treatment=factor(treatment,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2)) +
+  stat_density_2d(aes(fill=(..level..-min(..level..))/(max(..level..)-min(..level..))),
+                  geom='polygon',contour=T,contour_var = "ndensity") +
+  scale_fill_distiller(palette="Blues",direction=1,name="Density") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        strip.background = element_blank()) +
+  facet_wrap(~treatment) +
+  ggtitle("Emergent TCRs post-treatment") +
+  xlim(layer_scales(plot_ranges)$x$range$range) +
+  ylim(layer_scales(plot_ranges)$y$range$range) 
+
+legend <- cowplot::get_legend(p4x)
+p4_l <- as.ggplot(legend)
+
+## Quantification of emergent TCRs per cluster 
+p5 <- fig4_data %>%
+  filter(final_clusters %in% c(4,5,7)) %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  mutate(`Treatment group`=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(`Treatment group`=as.factor(`Treatment group`)) %>% 
+  mutate(`Treatment group`=factor(`Treatment group`,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  filter(!time_tx=="Baseline") %>%
+  filter(sample_type=="TIL") %>%
+  group_by(patient_id) %>%
+  mutate(total_cells=n()) %>%
+  group_by(patient_id,final_clusters) %>%
+  mutate(cells_per_clust=n()) %>%
+  mutate(freq_cells=cells_per_clust/total_cells) %>%
+  select(patient_id,`Treatment group`,final_clusters,freq_cells) %>%
+  distinct() %>%
+  ggplot(.,aes(x=final_clusters,y=freq_cells,group.by=`Treatment group`,fill=`Treatment group`)) +
+  geom_boxplot() +
+  theme_bw() +
+  theme(legend.position="none") +
+  xlab("Clusters") +
+  ylab("Fraction of Emergent TCRs\nin a cluster") +
+  scale_fill_manual(values=tx_group_colors[c(3,2,4)])
+
+p5x <- fig4_data %>%
+  filter(final_clusters %in% c(4,5,7)) %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  mutate(`Treatment group`=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(`Treatment group`=as.factor(`Treatment group`)) %>% 
+  mutate(`Treatment group`=factor(`Treatment group`,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  filter(!time_tx=="Baseline") %>%
+  filter(sample_type=="TIL") %>%
+  group_by(patient_id) %>%
+  mutate(total_cells=n()) %>%
+  group_by(patient_id,final_clusters) %>%
+  mutate(cells_per_clust=n()) %>%
+  mutate(freq_cells=cells_per_clust/total_cells) %>%
+  select(patient_id,`Treatment group`,final_clusters,freq_cells) %>%
+  distinct() %>%
+  ggplot(.,aes(x=final_clusters,y=freq_cells,group.by=`Treatment group`,fill=`Treatment group`)) +
+  geom_boxplot() +
+  theme_bw() +
+  xlab("Clusters") +
+  ylab("Fraction of Emergent TCRs\nin a cluster") +
+  scale_fill_manual(values=tx_group_colors[c(3,2,4)])
+
+legend <- cowplot::get_legend(p5x)
+p5_l <- as.ggplot(legend)
+
+## Statistics 
+fig4_data %>%
+  filter(final_clusters %in% c(4,5,7)) %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  mutate(`Treatment group`=recode(time_tx,baseline="Baseline",
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>%
+  mutate(`Treatment group`=as.factor(`Treatment group`)) %>% 
+  mutate(`Treatment group`=factor(`Treatment group`,levels=c(
+    "Baseline",
+    "Rela",
+    "Nivo",
+    "Rela+Nivo"
+  ))) %>% 
+  filter(!time_tx=="Baseline") %>%
+  filter(sample_type=="TIL") %>%
+  group_by(patient_id) %>%
+  mutate(total_cells=n()) %>%
+  group_by(patient_id,final_clusters) %>%
+  mutate(cells_per_clust=n()) %>%
+  mutate(freq_cells=cells_per_clust/total_cells) %>%
+  select(patient_id,`Treatment group`,final_clusters,freq_cells) %>%
+  distinct() %>%
+  split(.$final_clusters) %>% 
+  map(~try(lm(freq_cells~get("Treatment group"),data=.))) %>% 
+  map(~summary(.))
+
+## Gene sets my emergent vs non-emergent TCRs
+# Evaluate significant differences across groups 
+gene_sets_tcr_types <- fig4_data %>%
+  filter(timepoint=="Week4") %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  mutate(TCR_type=ifelse(tcrb_cdr3 %in% tcrs_post_til_only,"Emergent","Shared")) %>%
+  mutate(TCR_type=as.factor(TCR_type)) %>% 
+  mutate(TCR_type=factor(TCR_type,levels=c("Shared","Emergent"))) %>% 
+  select(patient_id,time_tx,TCR_type,
+         REACTOME_TCR_SIGNALING,
+         HALLMARK_INTERFERON_GAMMA_RESPONSE,
+         BELTRA_texint,
+         BELTRA_texterm
+         ) %>%
+  gather(gene_sets,values,-patient_id,-time_tx,-TCR_type) %>%
+  split(.$gene_sets) %>%
+  lapply(.,function(x) {
+    x %>%
+      split(.$time_tx) %>%
+      map(~afex::mixed(values~TCR_type+(1|patient_id),data=.))
+  })
+
+names(gene_sets_tcr_types)
+gene_sets_tcr_types[[1]]
+gene_sets_tcr_types[[2]]
+gene_sets_tcr_types[[3]]
+gene_sets_tcr_types[[4]]
+
+# Pairwise results
+pairwise_tx <- fig4_data %>%
+  filter(timepoint=="Week4") %>%
+  filter(!is.na(tcrb_cdr3)) %>%
+  mutate(TCR_type=ifelse(tcrb_cdr3 %in% tcrs_post_til_only,"Emergent","Shared")) %>%
+  mutate(TCR_type=as.factor(TCR_type)) %>% 
+  mutate(TCR_type=factor(TCR_type,levels=c("Shared","Emergent"))) %>% 
+  select(patient_id,time_tx,TCR_type,
+         REACTOME_TCR_SIGNALING,
+         HALLMARK_INTERFERON_GAMMA_RESPONSE,
+         BELTRA_texterm
+  ) %>%
+  gather(gene_sets,values,-patient_id,-time_tx,-TCR_type) %>%
+  split(.$gene_sets)
+
+pairwise_res <- pairwise_tx %>%
+  lapply(.,function(x) {
+    x %>%
+    split(.$time_tx) %>%
+    lapply(.,function(y) {
+      glht(lmer(values~TCR_type+(1|patient_id),data=y),
+             linfct=mcp(TCR_type = 'Tukey')) %>%
+        summary(.,test=adjusted('fdr'))
+})
+})
+
+# Derive confidence intervals 
+conf_int_res <- pairwise_tx %>%
+  lapply(.,function(x) {
+    x %>%
+      split(.$time_tx) %>%
+      lapply(.,function(y) {
+        mod_res <- lmer(values~TCR_type+(1|patient_id)-1,data=y)
+        mod_conf <- confint(lmer(values~TCR_type+(1|patient_id)-1,data=y))
+        
+        conf_ints_comb <- left_join(fixef(mod_res) %>%
+                                      enframe(.,name="group",value="fixed_eff"),
+                                    mod_conf %>%
+                                      as_tibble(.,rownames="group"),by="group")
+        return(conf_ints_comb)
+        
+      })
+  })
+
+set1 <- data.frame(do.call(rbind,conf_int_res[[1]]),
+                   time_tx=rep(c("Rela+Nivo","Nivo","Rela"),each=2)) %>%
+  mutate(group=recode(group,TCR_typeShared="Shared",TCR_typeEmergent="Emergent")) %>%
+  mutate(group=factor(group,levels=c("Shared","Emergent"))) %>%
+  mutate(time_tx=as.factor(time_tx)) %>%
+  mutate(time_tx=factor(time_tx,levels=c("Rela","Nivo","Rela+Nivo")))
+
+set2 <- data.frame(do.call(rbind,conf_int_res[[2]]),
+                   time_tx=rep(c("Rela+Nivo","Nivo","Rela"),each=2)) %>%
+  mutate(group=recode(group,TCR_typeShared="Shared",TCR_typeEmergent="Emergent")) %>%
+  mutate(group=factor(group,levels=c("Shared","Emergent"))) %>%
+  mutate(time_tx=as.factor(time_tx)) %>%
+  mutate(time_tx=factor(time_tx,levels=c("Rela","Nivo","Rela+Nivo")))
+
+set3 <- data.frame(do.call(rbind,conf_int_res[[3]]),
+                   time_tx=rep(c("Rela+Nivo","Nivo","Rela"),each=2)) %>%
+  mutate(group=recode(group,TCR_typeShared="Shared",TCR_typeEmergent="Emergent")) %>%
+  mutate(group=factor(group,levels=c("Shared","Emergent"))) %>%
+  mutate(time_tx=as.factor(time_tx)) %>%
+  mutate(time_tx=factor(time_tx,levels=c("Rela","Nivo","Rela+Nivo")))
+
+colnames(set1) <- colnames(set2) <- colnames(set3) <- c("TCR Group","fixed_eff","lower_bound","upper_bound","time_tx")
+
+p6 <- ggplot(set1,aes(x=`TCR Group`,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=`TCR Group`)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ylab("Terminal exhaustion\nenrichment score")
+
+p7 <- ggplot(set2,aes(x=`TCR Group`,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=`TCR Group`)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ylab("Interferon gamma response\nenrichment scores")
+
+p8 <- ggplot(set3,aes(x=`TCR Group`,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=`TCR Group`)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ylab("TCR signaling\nenrichment scores")
+
+p8x <- ggplot(set3,aes(x=`TCR Group`,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=`TCR Group`)) +
+  geom_crossbar() +
+  facet_wrap(~time_tx) +
+  theme_bw() +
+  ylab("TCR signaling enrichment scores")
+
+legend <- cowplot::get_legend(p8x)
+p8_l <- as.ggplot(legend)
+
+```
