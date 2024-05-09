@@ -18,7 +18,9 @@ library(survival)
 library(survminer)
 library(survMisc)
 library(ggplotify)
-library(xlsx)
+library(lme4)
+library(multcomp)
+select <- dplyr::select
 
 ```
 
@@ -27,6 +29,7 @@ library(xlsx)
 
 ```{r}
 
+## Load data
 fig6_data <- readRDS("./Data/cillo_et_al_figure_6_data.rds")
 
 ## Setup colors for fill
@@ -34,86 +37,113 @@ gene_set_colors <- RColorBrewer::brewer.pal("Set2",n=4)
 names(gene_set_colors) <- c("Immune Score","Nivo signature",
                             "Rela signature","Rela+Nivo signature")
 
+## Load flow data 
+fig6_data_part3 <- readRDS("./Data/18071_cd8_cd38_tim3_flow_data.rds")
+
+
+## NB: This data is only available upon request from https://zenodo.org/records/5747250
+## To re-run this script, users will need to request permission from the owners of this data
+fig6_data_part2 <- readRDS("./Data/huuhtanen_et_al_lag3_pd1_scrnaseq_summary.rds")
+
+
 ```
 
 ## Create figure
 
 ```{r}
 
-## Schema
+## Schema for Huuhtanen et al LAG3+PD1 study 
 p1 <- plot_spacer()
 
-## UMAPs
-p2 <- fig6_data[[1]] %>%
-  select(ImmuneScore,combo,nivo,rela,UMAP_1,UMAP_2) %>%
-  gather(gene_sets,values,-UMAP_1,-UMAP_2) %>%
-  group_by(gene_sets) %>%
-  mutate(scale_val=scale(values)) %>%
-  mutate(scale_val=ifelse(scale_val< -2,-2,scale_val)) %>%
-  mutate(scale_val=ifelse(scale_val>2,2,scale_val)) %>%
-  mutate(`Enrichment\nscore`=scale_val) %>%
-  mutate(gene_sets=recode(gene_sets,
-                          rela="Rela signature",
-                          nivo="Nivo signature",
-                          combo="Rela+Nivo signature",
-                          ImmuneScore="Immune infiltration")) %>%
-  mutate(gene_sets=as.factor(gene_sets)) %>%
-  mutate(gene_sets=factor(gene_sets,levels=c("Immune infiltration",
-                                             "Rela signature",
-                                             "Nivo signature",
-                                             "Rela+Nivo signature"))) %>%
-  ggplot(.,aes(x=UMAP_1,y=UMAP_2,colour=`Enrichment\nscore`)) +
-  geom_point() +
+## Plot of T cell umap 
+p2 <- fig6_data_part2 %>%
+  ggplot(.,aes(x=UMAP_1,y=UMAP_2,colour=cell_types)) +
+  rasterize(geom_point(colour="black",size=0.8)) +
+  rasterize(geom_point(size=0.6,alpha=0.3)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.border = element_blank(),
+        legend.position="right") +
+  guides(colour = guide_legend(title="T cell types",override.aes = list(size=3,alpha=1))) +
+  ggtitle("Huuhtanen et al\nPBMC - T cells") +
+  xlab("UMAP_1") +
+  ylab("UMAP_2")
+
+## Linear mixed effector model for response - week 4
+gene_set_significance <- fig6_data_part2 %>%
+  filter(timepoint=="1") %>%
+  filter(cell_types=="CD8+ T cells") %>%
+  mutate(best_response_class=ifelse(best_response %in% c("CR","PR"),"CR/PR","PD")) %>%
+  mutate(best_response_class=as.factor(best_response_class)) %>% 
+  mutate(best_response_class=factor(best_response_class,levels=c("PD","CR/PR"))) %>%
+  select(patient,combo,best_response_class) %>%
+  afex::mixed(combo~best_response_class+(1|patient)-1,data=.)
+
+response_model_data <- fig6_data_part2 %>%
+  filter(timepoint=="1") %>%
+  filter(cell_types=="CD8+ T cells") %>%
+  mutate(best_response_class=ifelse(best_response %in% c("CR","PR"),"CR/PR","PD")) %>%
+  mutate(best_response_class=as.factor(best_response_class)) %>% 
+  mutate(best_response_class=factor(best_response_class,levels=c("PD","CR/PR"))) %>%
+  select(patient,combo,best_response_class) 
+
+glht(lmer(combo~best_response_class+(1|patient)-1,data=response_model_data),
+             linfct=mcp(best_response_class = 'Tukey')) %>%
+        summary(.,test=adjusted('fdr'))
+
+mod_est <- lmer(combo~best_response_class+(1|patient)-1,data=response_model_data)
+mod_conf <- confint(lmer(combo~best_response_class+(1|patient)-1,data=response_model_data))
+        
+conf_ints_comb <- left_join(fixef(mod_est) %>%
+                              enframe(.,name="group",value="fixed_eff"),
+                            mod_conf %>%
+                              as_tibble(.,rownames="group"),by="group")
+
+set1 <- data.frame(conf_ints_comb) %>%
+  mutate(`Best response`=gsub("best_response_class","",group)) %>%
+  mutate(`Best response`=as.factor(`Best response`)) %>% 
+  mutate(`Best response`=factor(`Best response`,levels=c("PD","CR/PR"))) %>% 
+  select(-group)
+
+colnames(set1)[2:3] <- c("lower_bound","upper_bound")
+
+p3 <- ggplot(set1,aes(x=`Best response`,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=`Best response`)) +
+  geom_crossbar() +
   theme_bw() +
   theme(legend.position="none") +
-  facet_wrap(~gene_sets,ncol=2) +
-  scale_colour_gradient2(low="purple",mid="black",high="yellow")
+  ylab("Rela+Nivo treatment\nenrichment score") +
+  ggtitle("Huuhtanen et al PBMC\nCD8+ T cells - Week 4")
 
-p2x <- fig6_data[[1]] %>%
-  select(combo,nivo,rela,ImmuneScore,UMAP_1,UMAP_2) %>%
-  gather(gene_sets,values,-UMAP_1,-UMAP_2) %>%
-  group_by(gene_sets) %>%
-  mutate(scale_val=scale(values)) %>%
-  mutate(scale_val=ifelse(scale_val< -2,-2,scale_val)) %>%
-  mutate(scale_val=ifelse(scale_val>2,2,scale_val)) %>%
-  mutate(`Enrichment\nscore`=scale_val) %>%
-  mutate(gene_sets=recode(gene_sets,
-                          rela_til="Rela signature",
-                          nivo_til="Nivo signature",
-                          combo_til="Rela+Nivo signature",
-                          ImmuneScore="Immune infiltration")) %>%
-  mutate(gene_sets=as.factor(gene_sets)) %>%
-  mutate(gene_sets=factor(gene_sets,levels=c("Immune infiltration",
-                                             "Rela signature",
-                                             "Nivo signature",
-                                             "Rela+Nivo signature"))) %>%
-  ggplot(.,aes(x=UMAP_1,y=UMAP_2,colour=`Enrichment\nscore`)) +
-  geom_point() +
-  theme_bw() +
-  theme(legend.position="right") +
-  facet_wrap(~gene_sets,ncol=2) +
-  scale_colour_gradient2(low="purple",mid="black",high="yellow")
+## IO cohorts schema 
+p4 <- plot_spacer()
 
-legend <- cowplot::get_legend(p2x)
-p2_l <- ggplotify::as.ggplot(legend)
+## Survival analysis 
+p5 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~ImmuneScore,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p6 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~rela,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p7 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~nivo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+p8 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~combo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
 
-# Survival analysis 
-p4 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~ImmuneScore,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
-p5 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~rela,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
-p6 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~nivo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
-p7 <- as.ggplot(ggsurvplot(survfit(Surv(OS.time,OS)~combo,data=fig6_data[[2]]),pval=T,conf.int=T,surv.median.line="hv",risk.table=T)$plot)
+## Survival states
+coxph(Surv(OS.time,OS)~ImmuneScore,data=fig6_data[[2]])
+coxph(Surv(OS.time,OS)~rela,data=fig6_data[[2]])
+coxph(Surv(OS.time,OS)~nivo,data=fig6_data[[2]])
+coxph(Surv(OS.time,OS)~combo,data=fig6_data[[2]])
 
-## Schema
-p8 <- plot_spacer() 
+## Flow schema
+p9 <- plot_spacer() 
 
 flow_group_colors <- gene_set_colors
 names(flow_group_colors) <- c("NA","Nivo","Rela","Combo")
 
-p9 <- flow_data %>% 
+p10 <- fig6_data_part3 %>% 
   group_by(patient_id) %>%
   mutate(pid_count=n()) %>%
   ungroup() %>%
   filter(pid_count>1) %>%
+  filter(!time=="HD") %>% 
   mutate(tx=as.factor(tx)) %>%
   mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>%
   mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
@@ -133,11 +163,12 @@ p9 <- flow_data %>%
   xlab("Timepoint") +
   ylab("CD38+ TIM3+\n(Frequency of CD8+ T cells)")
 
-flow_data %>% 
+fig6_data_part3 %>% 
   group_by(patient_id) %>%
   mutate(pid_count=n()) %>%
   ungroup() %>%
   filter(pid_count>1) %>%
+  filter(!time=="HD") %>% 
   mutate(tx=as.factor(tx)) %>%
   mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>%
   mutate(tx=recode(tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 

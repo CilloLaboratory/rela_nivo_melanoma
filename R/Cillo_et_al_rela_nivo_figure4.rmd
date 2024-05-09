@@ -266,13 +266,14 @@ p3 <- fig4_data %>%
   facet_wrap(~treatment) +
   ggtitle("Shared TCRs pre- and post-treatment") +
   xlim(layer_scales(plot_ranges)$x$range$range) +
-  ylim(layer_scales(plot_ranges)$y$range$range) 
+  ylim(layer_scales(plot_ranges)$y$range$range) +
+  facet_wrap(~sample_type+treatment)
 
 ## Unique TCRs pre- and post-treatment
 p4 <- fig4_data %>%
   filter(!is.na(tcrb_cdr3)) %>%
   filter(!time_tx %in% "Baseline") %>%
-  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  filter(tcrb_cdr3 %in% tcrs_post_only) %>%
   mutate(treatment=recode(time_tx,baseline="Baseline",
                           combo="Rela+Nivo",
                           nivo="Nivo",
@@ -298,12 +299,13 @@ p4 <- fig4_data %>%
   facet_wrap(~treatment) +
   ggtitle("Emergent TCRs post-treatment") +
   xlim(layer_scales(plot_ranges)$x$range$range) +
-  ylim(layer_scales(plot_ranges)$y$range$range) 
+  ylim(layer_scales(plot_ranges)$y$range$range) +
+  facet_wrap(~sample_type+treatment)
 
 p4x <- fig4_data %>%
   filter(!is.na(tcrb_cdr3)) %>%
   filter(!time_tx %in% "Baseline") %>%
-  filter(tcrb_cdr3 %in% tcrs_post_til_only) %>%
+  filter(tcrb_cdr3 %in% tcrs_post_only) %>%
   mutate(treatment=recode(time_tx,baseline="Baseline",
                           combo="Rela+Nivo",
                           nivo="Nivo",

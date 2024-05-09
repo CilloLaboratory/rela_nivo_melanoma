@@ -176,7 +176,7 @@ rownames(res_stats) <- c("Tex intermediate",
                          "Naive CD8+",
                          "CD28 costimulation",
                          "PD1 signaling",
-                         "TCR signaling"
+                         "T cell activation"
 )
 
 p4 <- ggplotify::as.ggplot(pheatmap(res_stats,
@@ -193,51 +193,45 @@ fig2_data[[1]] <- fig2_data[[1]] %>%
   mutate(`Treatment group`=factor(`Treatment group`,levels=c("Baseline",
                                                              "Rela",
                                                              "Nivo",
-                                                             "Rela+Nivo")))
+                                                             "Rela+Nivo"))) %>%
+  mutate(treatment=recode(treatment,
+                          combo="Rela+Nivo",
+                          nivo="Nivo",
+                          rela="Rela")) %>% 
+  mutate(treatment=as.factor(treatment)) %>% 
+  mutate(treatment=factor(treatment,levels=c("Rela","Nivo","Rela+Nivo")))
 
-gene_sets_significance <- fig2_data[[1]] %>%
+## Baseline vs week 4 - PBMC
+pairwise_tx_pbmc <- fig2_data[[1]] %>%
+  filter(sample_type=="PBMC") %>% 
+  filter(timepoint %in% c("Baseline","Week4")) %>% 
+  filter(!treatment %in% c("off_study")) %>% 
+  filter(!is.na(treatment)) %>%
   select(patient_id,time_tx,sample_type,
          REACTOME_TCR_SIGNALING,
-         HALLMARK_INTERFERON_GAMMA_RESPONSE,
-         BELTRA_texint,
-         BELTRA_texterm
-         ) %>%
-  gather(gene_sets,values,-patient_id,-time_tx,-sample_type) %>%
-  split(.$sample_type) %>%
-  lapply(.,function(x) {
-    x %>%
-      split(.$gene_sets) %>%
-      map(~afex::mixed(values~time_tx+(1|patient_id)-1,data=.))
-  })
-
-pairwise_tx <- fig2_data[[1]] %>%
-  select(patient_id,time_tx,sample_type,
-         REACTOME_TCR_SIGNALING,
-         HALLMARK_INTERFERON_GAMMA_RESPONSE,
-         BELTRA_texint,
-         BELTRA_texterm
+         BELTRA_texterm,treatment,timepoint
   ) %>%
-  gather(gene_sets,values,-patient_id,-time_tx,-sample_type) %>%
-  split(.$sample_type)
+  gather(gene_sets,values,-patient_id,-time_tx,-sample_type,-treatment,-timepoint) %>%
+  split(.$treatment)
 
-pairwise_res <- pairwise_tx %>%
+pairwise_res_pbmc <- pairwise_tx_pbmc %>%
   lapply(.,function(x) {
     x %>%
     split(.$gene_sets) %>%
     lapply(.,function(y) {
-      glht(lmer(values~time_tx+(1|patient_id)-1,data=y),
-             linfct=mcp(time_tx = 'Tukey')) %>%
+      glht(lmer(values~timepoint+(1|patient_id)-1,data=y),
+             linfct=mcp(timepoint = 'Tukey')) %>%
         summary(.,test=adjusted('fdr'))
 })
 })
 
-conf_int_res <- pairwise_tx %>%
+conf_int_res_pbmc <- pairwise_tx_pbmc %>%
   lapply(.,function(x) {
     x %>%
       split(.$gene_sets) %>%
       lapply(.,function(y) {
-        mod_res <- lmer(values~time_tx+(1|patient_id)-1,data=y)
-        mod_conf <- confint(lmer(values~time_tx+(1|patient_id)-1,data=y))
+        mod_res <- lmer(values~timepoint+(1|patient_id)-1,data=y)
+        mod_conf <- confint(lmer(values~timepoint+(1|patient_id)-1,data=y))
         
         conf_ints_comb <- left_join(fixef(mod_res) %>%
                                       enframe(.,name="group",value="fixed_eff"),
@@ -248,41 +242,135 @@ conf_int_res <- pairwise_tx %>%
       })
   })
 
-set1 <- data.frame(do.call(rbind,conf_int_res[[1]])) %>%
-  as_tibble(.,rownames="gene_set") %>%
-  mutate(gene_set=gsub("\\.[0-9]","",gene_set)) %>%
-  mutate(group=as.factor(gsub("time_tx","",group))) %>%
-  mutate(group=recode(group,combo="Rela+nivo",nivo="Nivo",rela="Rela")) %>%
-  mutate(group=factor(group,levels=c("Baseline","Rela","Nivo","Rela+nivo")))
+set1 <- data.frame(do.call(rbind,c(conf_int_res_pbmc[[1]][1],conf_int_res_pbmc[[2]][1],conf_int_res_pbmc[[3]][1]))) %>%
+  as_tibble(.,rownames="treatment") %>%
+  mutate(group=as.factor(gsub("timepoint","",group)))
 
-set2 <- data.frame(do.call(rbind,conf_int_res[[2]])) %>%
-  as_tibble(.,rownames="gene_set") %>%
-  mutate(gene_set=gsub("\\.[0-9]","",gene_set)) %>%
-  mutate(group=as.factor(gsub("time_tx","",group))) %>%
-  mutate(group=recode(group,combo="Rela+nivo",nivo="Nivo",rela="Rela")) %>%
-  mutate(group=factor(group,levels=c("Baseline","Rela","Nivo","Rela+nivo")))
+set2 <- data.frame(do.call(rbind,c(conf_int_res_pbmc[[1]][2],conf_int_res_pbmc[[2]][2],conf_int_res_pbmc[[3]][2]))) %>%
+  as_tibble(.,rownames="treatment") %>%
+  mutate(group=as.factor(gsub("timepoint","",group)))
 
-colnames(set1) <- colnames(set2) <- c("gene_set","Group","fixed_eff","lower_bound","upper_bound")
+colnames(set1) <- colnames(set2) <- c("treatment","Group","fixed_eff","lower_bound","upper_bound")
+
+set1$treatment <- set2$treatment <- rep(names(conf_int_res_pbmc),each=2)
+
+set1$gene_set <- "BELTRA_texterm"
+set2$gene_set <- "REACTOME_TCR_SIGNALING"
+
+set1 <- set1 %>% 
+  mutate(time_tx=ifelse(Group=="Baseline","Baseline",treatment))
+
+set2 <- set2 %>% 
+  mutate(time_tx=ifelse(Group=="Baseline","Baseline",treatment))
 
 p5 <- set1 %>%
-  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=Group)) +
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=time_tx)) +
   geom_crossbar() +
-  facet_wrap(~time_tx) +
+  scale_fill_manual(values=tx_group_colors) +
+  facet_wrap(~treatment) +
+  ylim(c(0.02,0.20)) +
   theme_bw() +
   theme(legend.position="none") +
-  scale_fill_manual(values=tx_group_colors) +
-  facet_wrap(~gene_set,scale="free")
+  ylab("Terminal exhaustion\nenrichment score") +
+  ggtitle("PBMC")
 
 p6 <- set2 %>%
-  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=Group)) +
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=time_tx)) +
   geom_crossbar() +
-  facet_wrap(~time_tx) +
+  scale_fill_manual(values=tx_group_colors) +
+  facet_wrap(~treatment) +
+  ylim(c(0.11,0.30)) +
   theme_bw() +
   theme(legend.position="none") +
-  facet_wrap(~gene_set,scale="free")
+  ylab("T cell activation\nenrichment score") +
+  ggtitle("PBMC")
+
+## Baseline vs week 4 - TIL
+pairwise_tx_til <- fig2_data[[1]] %>%
+  filter(sample_type=="TIL") %>% 
+  filter(timepoint %in% c("Baseline","Week4")) %>% 
+  filter(!treatment %in% c("off_study")) %>% 
+  filter(!is.na(treatment)) %>%
+  select(patient_id,time_tx,sample_type,
+         REACTOME_TCR_SIGNALING,
+         BELTRA_texterm,treatment,timepoint
+  ) %>%
+  gather(gene_sets,values,-patient_id,-time_tx,-sample_type,-treatment,-timepoint) %>%
+  split(.$treatment)
+
+pairwise_res_til <- pairwise_tx_til %>%
+  lapply(.,function(x) {
+    x %>%
+    split(.$gene_sets) %>%
+    lapply(.,function(y) {
+      glht(lmer(values~timepoint+(1|patient_id)-1,data=y),
+             linfct=mcp(timepoint = 'Tukey')) %>%
+        summary(.,test=adjusted('fdr'))
+})
+})
+
+conf_int_res_til <- pairwise_tx_til %>%
+  lapply(.,function(x) {
+    x %>%
+      split(.$gene_sets) %>%
+      lapply(.,function(y) {
+        mod_res <- lmer(values~timepoint+(1|patient_id)-1,data=y)
+        mod_conf <- confint(lmer(values~timepoint+(1|patient_id)-1,data=y))
+        
+        conf_ints_comb <- left_join(fixef(mod_res) %>%
+                                      enframe(.,name="group",value="fixed_eff"),
+                                    mod_conf %>%
+                                      as_tibble(.,rownames="group"),by="group")
+        return(conf_ints_comb)
+        
+      })
+  })
+
+set3 <- data.frame(do.call(rbind,c(conf_int_res_til[[1]][1],conf_int_res_til[[2]][1],conf_int_res_til[[3]][1]))) %>%
+  as_tibble(.,rownames="treatment") %>%
+  mutate(group=as.factor(gsub("timepoint","",group)))
+
+set4 <- data.frame(do.call(rbind,c(conf_int_res_til[[1]][2],conf_int_res_til[[2]][2],conf_int_res_til[[3]][2]))) %>%
+  as_tibble(.,rownames="treatment") %>%
+  mutate(group=as.factor(gsub("timepoint","",group)))
+
+colnames(set3) <- colnames(set4) <- c("treatment","Group","fixed_eff","lower_bound","upper_bound")
+
+set3$treatment <- set4$treatment <- rep(names(conf_int_res_til),each=2)
+
+set3$gene_set <- "BELTRA_texterm"
+set4$gene_set <- "REACTOME_TCR_SIGNALING"
+
+set3 <- set3 %>% 
+  mutate(time_tx=ifelse(Group=="Baseline","Baseline",treatment))
+
+set4 <- set4 %>% 
+  mutate(time_tx=ifelse(Group=="Baseline","Baseline",treatment))
+
+p7 <- set3 %>%
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=time_tx)) +
+  geom_crossbar() +
+  scale_fill_manual(values=tx_group_colors) +
+  facet_wrap(~treatment) +
+  ylim(c(0.02,0.20)) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ylab("Terminal exhaustion\nenrichment score") +
+  ggtitle("TIL")
+
+p8 <- set4 %>%
+  ggplot(.,aes(x=Group,y=fixed_eff,ymin=lower_bound,ymax=upper_bound,fill=time_tx)) +
+  geom_crossbar() +
+  scale_fill_manual(values=tx_group_colors) +
+  facet_wrap(~treatment) +
+  ylim(c(0.11,0.30)) +
+  theme_bw() +
+  theme(legend.position="none") +
+  ylab("T cell activation\nenrichment score") +
+  ggtitle("TIL")
 
 ## TCR signaling
-p7 <- plot_spacer() 
+p9 <- plot_spacer() 
 
 condition_list <- fig2_data[[2]] %>%
   split(.$condition)
@@ -293,7 +381,7 @@ cond_res <- data.frame(patient_id=condition_list[[1]]$patient_id,
                        pSLP76=condition_list[[1]]$pSLP76_MFI/condition_list[[2]]$pSLP76_MFI
 )
 
-p8 <- cond_res %>%
+p10 <- cond_res %>%
   gather(marker,value,-patient_id,-timepoint,-tx) %>%
   mutate(tx=as.factor(tx)) %>%
   mutate(tx=factor(tx,levels=c("rela","nivo","combo"))) %>% 

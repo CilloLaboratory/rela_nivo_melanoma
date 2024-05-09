@@ -236,7 +236,7 @@ p4 <- add.flag(out2,kept.labels=c("LAG3","PDCD1","HAVCR2",
                                   ),
          repel.degree=0.1)
 
-## Modules across pseudotime bins 
+## Modules in final pseudotime bin
 # Omnibus test - modules 1 and 8
 overall_test <- fig3_data[[1]] %>%
   filter(timepoint %in% c("Baseline","Week4")) %>%
@@ -244,7 +244,7 @@ overall_test <- fig3_data[[1]] %>%
   select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
   gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
   filter(gene_sets %in% c("Module_1","Module_8")) %>% 
-  filter(pseudo_bin>7) %>%
+  filter(pseudo_bin==10) %>%
   split(.$gene_sets) %>%
   map(~afex::mixed(values~time_tx+(1|patient_id)-1,data=.))
 
@@ -255,7 +255,7 @@ pairwise_res <- fig3_data[[1]] %>%
   select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
   gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
   filter(gene_sets %in% c("Module_1","Module_8")) %>% 
-  filter(pseudo_bin>7) %>%
+  filter(pseudo_bin==10) %>%
   split(.$gene_sets) %>%
   lapply(.,function(x) {
     lmer_mod <- lmer(values~time_tx+(1|patient_id),data=x)
@@ -263,65 +263,80 @@ pairwise_res <- fig3_data[[1]] %>%
       summary(.,test=adjusted("fdr"))
   })
 
-# Confidence intervals 
-conf_ints <- fig3_data[[1]] %>%
+# Plots 
+p5 <- fig3_data[[1]] %>%
   filter(timepoint %in% c("Baseline","Week4")) %>%
   mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
-  select(grep("Module",colnames(fig3_data[[1]]),value=T),time_tx,pseudo_bin,patient_id) %>%
-  gather(gene_sets,values,-time_tx,-pseudo_bin,-patient_id) %>% 
-  filter(gene_sets %in% c("Module_1","Module_8")) %>% 
-  filter(pseudo_bin>7) %>%
-  split(.$gene_sets) %>%
-  lapply(.,function(x) {
-    mod_res <- lmer(values~time_tx+(1|patient_id)-1,data=x)
-    mod_conf <- confint(lmer(values~time_tx+(1|patient_id)-1,data=x))
-    
-    conf_ints_comb <- left_join(fixef(mod_res) %>%
-                                  enframe(.,name="group",value="fixed_eff"),
-                                mod_conf %>%
-                                  as_tibble(.,rownames="group"),by="group")
-    return(conf_ints_comb)
-    
-  })
-
-# Plots 
-p5 <- conf_ints[[1]] %>%
-  mutate(tx=as.factor(recode(group,
-                             time_txBaseline="Baseline",
-                             time_txcombo="Rela+Nivo",
-                             time_txnivo="Nivo",
-                             time_txrela="Rela"))) %>%
+  select(grep("Module",colnames(fig3_data[[1]]),value=T),pseudo_bin,time_tx) %>%
+  gather(gene_sets,values,-pseudo_bin,-time_tx) %>%
+  group_by(pseudo_bin,time_tx,gene_sets) %>%
+  summarize(median_val=median(values)) %>%
+  filter(gene_sets=="Module_1") %>% 
+  mutate(tx=as.factor(recode(time_tx,
+                             Baseline="Baseline",
+                             combo="Rela+Nivo",
+                             nivo="Nivo",
+                             rela="Rela"))) %>%
   mutate(tx=factor(tx,levels=c("Baseline",
                                "Rela",
                                "Nivo",
                                "Rela+Nivo"))) %>%
-  ggplot(.,aes(x=tx,y=fixed_eff,ymin=`2.5 %`,ymax=`97.5 %`,
-               fill=tx)) +
-  geom_crossbar() +
+  mutate(gene_sets=as.factor(gene_sets)) %>%
+  mutate(gene_sets=factor(gene_sets,levels=levels(gene_sets)[c(1,3:10,2)])) %>% 
+  ggplot(.,aes(x=pseudo_bin,y=median_val,colour=tx,group=tx)) +
+  geom_line(size=1) +
   theme_bw() +
-  theme(legend.position = "none") +
-  xlab("Treatment Group") +
-  ylab("Terminal exhaustion module") +
-  scale_fill_manual(values=tx_group_colors)
+  scale_color_manual(values=tx_group_colors) +
+  scale_x_continuous(breaks=seq(1,10,1)) +
+  guides(colour = guide_legend(title="Treatment groups")) +
+  ylab("Terminal exhaustion\nGene module score") +
+  xlab("Pseudotime bins")
 
-p6 <- conf_ints[[2]] %>%
-  mutate(tx=as.factor(recode(group,
-                             time_txBaseline="Baseline",
-                             time_txcombo="Rela+Nivo",
-                             time_txnivo="Nivo",
-                             time_txrela="Rela"))) %>%
+p6 <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  select(grep("Module",colnames(fig3_data[[1]]),value=T),pseudo_bin,time_tx) %>%
+  gather(gene_sets,values,-pseudo_bin,-time_tx) %>%
+  group_by(pseudo_bin,time_tx,gene_sets) %>%
+  summarize(median_val=median(values)) %>%
+  filter(gene_sets=="Module_8") %>% 
+  mutate(tx=as.factor(recode(time_tx,
+                             Baseline="Baseline",
+                             combo="Rela+Nivo",
+                             nivo="Nivo",
+                             rela="Rela"))) %>%
   mutate(tx=factor(tx,levels=c("Baseline",
                                "Rela",
                                "Nivo",
                                "Rela+Nivo"))) %>%
-  ggplot(.,aes(x=tx,y=fixed_eff,ymin=`2.5 %`,ymax=`97.5 %`,
-               fill=tx)) +
-  geom_crossbar() +
+  mutate(gene_sets=as.factor(gene_sets)) %>%
+  mutate(gene_sets=factor(gene_sets,levels=levels(gene_sets)[c(1,3:10,2)])) %>% 
+  ggplot(.,aes(x=pseudo_bin,y=median_val,colour=tx,group=tx)) +
+  geom_line(size=1) +
   theme_bw() +
-  theme(legend.position = "none") +
-  xlab("Treatment Group") +
-  ylab("Cytotoxic module") +
-  scale_fill_manual(values=tx_group_colors)
+  scale_color_manual(values=tx_group_colors) +
+  scale_x_continuous(breaks=seq(1,10,1)) +
+  guides(colour = guide_legend(title="Treatment groups")) +
+  ylab("Cytotoxic\nGene module score") +
+  xlab("Pseudotime bins")
+
+p7 <- fig3_data[[1]] %>%
+  filter(timepoint %in% c("Baseline","Week4")) %>%
+  mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
+  select(sample_type,pseudo_bin) %>%
+  group_by(pseudo_bin,sample_type) %>%
+  summarize(tissue_counts=n()) %>% 
+  group_by(pseudo_bin) %>% 
+  mutate(total_counts=sum(tissue_counts)) %>% 
+  ungroup() %>% 
+  mutate(perc_count=tissue_counts/total_counts) %>% 
+  ggplot(.,aes(x=pseudo_bin,y=perc_count,colour=sample_type)) +
+  geom_line(size=1) +
+  theme_bw() +
+  scale_x_continuous(breaks=seq(1,10,1)) +
+  guides(colour = guide_legend(title="Treatment groups")) +
+  ylab("Frequency of PBMC or TIL\n in each pseudotime bin") +
+  xlab("Pseudotime bins")
 
 ## Co-expression of gene modules across groups
 ## Pipeline to evaluate gene sets, cutoffs and frequencies across groups
@@ -342,10 +357,11 @@ cut_offs <- fig3_data[[1]] %>%
 cut_res <- cut_offs[15,c(gene_set1,gene_set2)]
 
 ## Plot with cutoffs 
-p7 <- fig3_data[[1]] %>%
+p8 <- fig3_data[[1]] %>%
   filter(timepoint %in% c("Baseline","Week4")) %>%
   mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
-  filter(pseudo_bin>7) %>%
+  filter(pseudo_bin==10) %>%
+  filter(sample_type=="TIL") %>% 
   mutate(time_tx=as.factor(time_tx)) %>%
   mutate(time_tx=factor(time_tx,levels=c("Baseline","rela","nivo","combo"))) %>% 
   mutate(time_tx=recode(time_tx,rela="Rela",nivo="Nivo",combo="Combo")) %>% 
@@ -369,7 +385,8 @@ p7 <- fig3_data[[1]] %>%
 fig3_data[[1]] %>%
   filter(timepoint %in% c("Baseline","Week4")) %>%
   mutate(pseudo_bin=as.numeric(cut_number(velocity_pseudotime,n=10))) %>%
-  filter(pseudo_bin>7) %>%
+  filter(sample_type=="TIL") %>%
+  filter(pseudo_bin==10) %>%
   mutate(mod1_pos=ifelse(!! sym(gene_set1)>cut_res[1],1,0)) %>%
   mutate(mod8_pos=ifelse(!! sym(gene_set2)>cut_res[2],1,0)) %>%
   select(mod1_pos,mod8_pos,time_tx) %>%
