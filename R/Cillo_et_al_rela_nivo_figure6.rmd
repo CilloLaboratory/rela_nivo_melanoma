@@ -37,14 +37,9 @@ gene_set_colors <- RColorBrewer::brewer.pal("Set2",n=4)
 names(gene_set_colors) <- c("Immune Score","Nivo signature",
                             "Rela signature","Rela+Nivo signature")
 
-## Load flow data 
-fig6_data_part3 <- readRDS("./Data/18071_cd8_cd38_tim3_flow_data.rds")
-
-
 ## NB: This data is only available upon request from https://zenodo.org/records/5747250
 ## To re-run this script, users will need to request permission from the owners of this data
 fig6_data_part2 <- readRDS("./Data/huuhtanen_et_al_lag3_pd1_scrnaseq_summary.rds")
-
 
 ```
 
@@ -138,7 +133,7 @@ p9 <- plot_spacer()
 flow_group_colors <- gene_set_colors
 names(flow_group_colors) <- c("NA","Nivo","Rela","Combo")
 
-p10 <- fig6_data_part3 %>% 
+p10 <- fig6_data[[3]] %>% 
   group_by(patient_id) %>%
   mutate(pid_count=n()) %>%
   ungroup() %>%
@@ -163,7 +158,7 @@ p10 <- fig6_data_part3 %>%
   xlab("Timepoint") +
   ylab("CD38+ TIM3+\n(Frequency of CD8+ T cells)")
 
-fig6_data_part3 %>% 
+fig6_data[[3]] %>% 
   group_by(patient_id) %>%
   mutate(pid_count=n()) %>%
   ungroup() %>%

@@ -22,14 +22,14 @@ library(ggrastr)
 
 ```{r}
 
-fig1_data <- readRDS("./data/cillo_et_al_figure_1_data.rds")
+fig1_data <- readRDS("./Data/cillo_et_al_figure_1_data.rds")
 
 ## Set default dpi for ggrastr
 options(ggrastr.default.dpi=100)
 
 ## Define colors for visualization
 colors.use <- colorRampPalette(RColorBrewer::brewer.pal("Set2",n=8))(length(unique(fig1_data$scvi_cell_types_refined)))
-names(colors.use) <- levels(umap_meta$scvi_cell_types_refined)
+names(colors.use) <- levels(fig1_data$scvi_cell_types_refined)
 
 ```
 
@@ -59,7 +59,7 @@ p2 <- fig1_data %>%
 
 
 ## Overall TIL - cell types 
-p3 <- umap_meta %>%
+p3 <- fig1_data %>%
   filter(sample_type=="TIL") %>%
   ggplot(., aes(x=UMAP_1, y=UMAP_2,colour=scvi_cell_types_refined)) +
   rasterize(geom_point(colour="black",size=0.7)) +

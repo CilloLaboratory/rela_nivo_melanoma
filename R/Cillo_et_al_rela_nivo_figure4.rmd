@@ -15,7 +15,6 @@ library(patchwork)
 library(ggplotify)
 library(ggrastr)
 library(pheatmap)
-library(UpSetR)
 library(lme4)
 library(multcomp)
 select <- dplyr::select

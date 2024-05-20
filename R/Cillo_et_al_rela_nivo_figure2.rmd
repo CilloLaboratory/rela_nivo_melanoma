@@ -282,7 +282,7 @@ p6 <- set2 %>%
   ylim(c(0.11,0.30)) +
   theme_bw() +
   theme(legend.position="none") +
-  ylab("T cell activation\nenrichment score") +
+  ylab("TCR signaling gene set\nenrichment score") +
   ggtitle("PBMC")
 
 ## Baseline vs week 4 - TIL
@@ -366,7 +366,7 @@ p8 <- set4 %>%
   ylim(c(0.11,0.30)) +
   theme_bw() +
   theme(legend.position="none") +
-  ylab("T cell activation\nenrichment score") +
+  ylab("TCR signaling gene set\nenrichment score") +
   ggtitle("TIL")
 
 ## TCR signaling
