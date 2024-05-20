@@ -49,4 +49,4 @@ po/*~
 rsconnect/
 
 # Mac files
-.DS_Store
+**/.DS_Store
